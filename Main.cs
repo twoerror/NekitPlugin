@@ -11,12 +11,14 @@ namespace NekitPlugin
     public class NekitPlugin : Plugin<Config>
     {
         private static readonly NekitPlugin Singleton = new();
+
         private NekitPlugin() { }
+
         public static NekitPlugin Instance => Singleton;
+
         public override PluginPriority Priority { get; } = PluginPriority.Last;
 
         private bool isRoundDelayed = false;
-        private CoroutineHandle checkPlayersCoroutine;
 
         public override void OnEnabled() 
         {
@@ -28,8 +30,6 @@ namespace NekitPlugin
         public override void OnDisabled() 
         {
             UnRegisterEvents();
-            if (checkPlayersCoroutine.IsRunning)
-                Timing.KillCoroutines(checkPlayersCoroutine);
             base.OnDisabled();
             Log.Info($"Плагин NekitPlugin выключен");
         }
@@ -41,7 +41,6 @@ namespace NekitPlugin
             Exiled.Events.Handlers.Server.EndingRound += OnEndingRound;
             Exiled.Events.Handlers.Player.Joined += OnPlayerJoined;
             Exiled.Events.Handlers.Player.Left += OnPlayerLeft;
-            Exiled.Events.Handlers.Player.Authenticated += OnPlayerAuthenticated;
             
             Log.Debug("Все события зарегистрированы");
         }
@@ -53,7 +52,6 @@ namespace NekitPlugin
             Exiled.Events.Handlers.Server.EndingRound -= OnEndingRound;
             Exiled.Events.Handlers.Player.Joined -= OnPlayerJoined;
             Exiled.Events.Handlers.Player.Left -= OnPlayerLeft;
-            Exiled.Events.Handlers.Player.Authenticated -= OnPlayerAuthenticated;
             
             Log.Debug("Все события отписаны");
         }
@@ -61,69 +59,43 @@ namespace NekitPlugin
         private void OnWaitingForPlayers()
         {
             isRoundDelayed = false;
-            if (checkPlayersCoroutine.IsRunning)
-                Timing.KillCoroutines(checkPlayersCoroutine);
             Log.Info("Сервер ожидает игроков, сброс состояния раунда");
+            CheckPlayersForRoundStart();
         }
 
         private void OnRoundStarted()
         {
             Log.Info("Раунд начался!");
             isRoundDelayed = false;
-            if (checkPlayersCoroutine.IsRunning)
-                Timing.KillCoroutines(checkPlayersCoroutine);
         }
 
         private void OnEndingRound(EndingRoundEventArgs ev)
         {
-            int authenticatedPlayers = GetAuthenticatedPlayersCount();
-            
-            if (authenticatedPlayers < Config.MinPlayers)
+            if (Round.IsEnded && Player.List.Count < Config.MinPlayers)
             {
                 ev.IsAllowed = false;
-                Log.Info($"Окончание раунда заблокировано: недостаточно аутентифицированных игроков ({authenticatedPlayers}/{Config.MinPlayers})");
-           }
+                Log.Info($"Окончание раунда заблокировано: недостаточно игроков ({Player.List.Count}/{Config.MinPlayers})");
+            }
         }
 
         private void OnPlayerJoined(JoinedEventArgs ev)
         {
-            Log.Info($"Игрок {ev.Player.Nickname} присоединился. Всего подключений: {Player.List.Count}");
+            Log.Info($"Игрок {ev.Player.Nickname} присоединился. Всего игроков: {Player.List.Count}");
             
-            if (!Round.IsStarted && Round.IsLobby)
+            if (Round.IsLobby && !Round.IsStarted)
             {
-                checkPlayersCoroutine = Timing.CallDelayed(2f, CheckPlayersForRoundStart);
+                CheckPlayersForRoundStart();
             }
         }
 
         private void OnPlayerLeft(LeftEventArgs ev)
         {
-            Log.Info($"Игрок {ev.Player.Nickname} вышел. Всего подключений: {Player.List.Count}");
+            Log.Info($"Игрок {ev.Player.Nickname} вышел. Всего игроков: {Player.List.Count}");
             
-            if (!Round.IsStarted && Round.IsLobby)
+            if (Round.IsLobby && !Round.IsStarted)
             {
                 CheckPlayersForRoundStart();
             }
-        }
-
-        private void OnPlayerAuthenticated(Exiled.Events.EventArgs.Player.AuthenticatedEventArgs ev)
-        {
-            Log.Debug($"Игрок {ev.Player.Nickname} аутентифицирован");
-            
-            if (!Round.IsStarted && Round.IsLobby)
-            {
-                CheckPlayersForRoundStart();
-            }
-        }
-
-        private int GetAuthenticatedPlayersCount()
-        {
-            int count = 0;
-            foreach (Player player in Player.List)
-            {
-                if (player.IsAuthenticated)
-                    count++;
-            }
-            return count;
         }
 
         private void CheckPlayersForRoundStart()
@@ -131,29 +103,26 @@ namespace NekitPlugin
             if (Round.IsStarted)
                 return;
 
-            int authenticatedPlayers = GetAuthenticatedPlayersCount();
-            int totalPlayers = Player.List.Count;
-            
-            Log.Debug($"Проверка игроков: Аутентифицировано: {authenticatedPlayers}/{Config.MinPlayers}, Всего подключений: {totalPlayers}, isRoundDelayed: {isRoundDelayed}");
+            int currentPlayers = Player.List.Count;
+            Log.Debug($"Проверка игроков: {currentPlayers}/{Config.MinPlayers}, isRoundDelayed: {isRoundDelayed}");
 
-            if (authenticatedPlayers < Config.MinPlayers)
+            if (currentPlayers < Config.MinPlayers)
             {
                 if (!isRoundDelayed)
                 {
-                    Log.Warn($"Недостаточно аутентифицированных игроков для начала раунда. Требуется: {Config.MinPlayers}. Сейчас: {authenticatedPlayers}.");
+                    Log.Warn($"Недостаточно игроков для начала раунда. Требуется: {Config.MinPlayers}. Сейчас: {currentPlayers}.");
                     isRoundDelayed = true;
                 }
                 
                 Round.IsLobbyLocked = true;
-                Log.Debug("Лобби заблокировано - недостаточно аутентифицированных игроков");
+                Log.Debug("Лобби заблокировано - недостаточно игроков");
             }
-            else if (authenticatedPlayers >= Config.MinPlayers)
+            else if (currentPlayers >= Config.MinPlayers)
             {
                 Round.IsLobbyLocked = false;
-
+                Log.Info($"Достигнут минимум игроков ({Config.MinPlayers}). Запуск раунда.");
                 if (isRoundDelayed)
-                {
-                    Log.Info($"Достигнут минимум аутентифицированных игроков ({Config.MinPlayers}). Запуск раунда.");
+                {     
                     isRoundDelayed = false;
                 }
             }
