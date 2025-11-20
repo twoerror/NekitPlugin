@@ -38,7 +38,6 @@ namespace NekitPlugin
         {
             Exiled.Events.Handlers.Server.WaitingForPlayers += OnWaitingForPlayers;
             Exiled.Events.Handlers.Server.RoundStarted += OnRoundStarted;
-            Exiled.Events.Handlers.Server.EndingRound += OnEndingRound;
             Exiled.Events.Handlers.Player.Verified += OnPlayerVerified;
             Exiled.Events.Handlers.Player.Destroying += OnPlayerDestroying;
             
@@ -49,7 +48,6 @@ namespace NekitPlugin
         {
             Exiled.Events.Handlers.Server.WaitingForPlayers -= OnWaitingForPlayers;
             Exiled.Events.Handlers.Server.RoundStarted -= OnRoundStarted;
-            Exiled.Events.Handlers.Server.EndingRound -= OnEndingRound;
             Exiled.Events.Handlers.Player.Verified -= OnPlayerVerified;
             Exiled.Events.Handlers.Player.Destroying -= OnPlayerDestroying;
             
@@ -72,16 +70,6 @@ namespace NekitPlugin
         private void OnPlayerVerified(VerifiedEventArgs ev)
         {
             Log.Info($"Игрок {ev.Player.Nickname} полностью подключен. Всего игроков: {Player.Dictionary.Count}");
-            
-            if (Round.IsLobby && !Round.IsStarted)
-            {
-                CheckPlayersForRoundState();
-            }
-        }
-
-        private void OnPlayerDestroying(DestroyingEventArgs ev)
-        {
-            Log.Info($"Игрок {ev.Player.Nickname} отключился. Всего игроков: {Player.Dictionary.Count}");
             
             if (Round.IsLobby && !Round.IsStarted)
             {
