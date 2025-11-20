@@ -39,8 +39,8 @@ namespace NekitPlugin
             Exiled.Events.Handlers.Server.WaitingForPlayers += OnWaitingForPlayers;
             Exiled.Events.Handlers.Server.RoundStarted += OnRoundStarted;
             Exiled.Events.Handlers.Server.EndingRound += OnEndingRound;
-            Exiled.Events.Handlers.Player.Joined += OnPlayerJoined;
-            Exiled.Events.Handlers.Player.Left += OnPlayerLeft;
+            Exiled.Events.Handlers.Player.Verified += OnPlayerVerified;
+            Exiled.Events.Handlers.Player.Destroying += OnPlayerDestroying;
             
             Log.Debug("Все события зарегистрированы");
         }
@@ -50,8 +50,8 @@ namespace NekitPlugin
             Exiled.Events.Handlers.Server.WaitingForPlayers -= OnWaitingForPlayers;
             Exiled.Events.Handlers.Server.RoundStarted -= OnRoundStarted;
             Exiled.Events.Handlers.Server.EndingRound -= OnEndingRound;
-            Exiled.Events.Handlers.Player.Joined -= OnPlayerJoined;
-            Exiled.Events.Handlers.Player.Left -= OnPlayerLeft;
+            Exiled.Events.Handlers.Player.Verified -= OnPlayerVerified;
+            Exiled.Events.Handlers.Player.Destroying -= OnPlayerDestroying;
             
             Log.Debug("Все события отписаны");
         }
@@ -60,7 +60,7 @@ namespace NekitPlugin
         {
             isRoundDelayed = false;
             Log.Info("Сервер ожидает игроков, сброс состояния раунда");
-            CheckPlayersForRoundStart();
+            CheckPlayersForRoundState();
         }
 
         private void OnRoundStarted()
@@ -71,39 +71,39 @@ namespace NekitPlugin
 
         private void OnEndingRound(EndingRoundEventArgs ev)
         {
-            if (Round.IsEnded && Player.List.Count < Config.MinPlayers)
+            if (ev.IsRoundEnded && Player.Dictionary.Count < Config.MinPlayers)
             {
                 ev.IsAllowed = false;
-                Log.Info($"Окончание раунда заблокировано: недостаточно игроков ({Player.List.Count}/{Config.MinPlayers})");
+                Log.Info($"Окончание раунда заблокировано: недостаточно игроков ({Player.Dictionary.Count}/{Config.MinPlayers})");
             }
         }
 
-        private void OnPlayerJoined(JoinedEventArgs ev)
+        private void OnPlayerVerified(VerifiedEventArgs ev)
         {
-            Log.Info($"Игрок {ev.Player.Nickname} присоединился. Всего игроков: {Player.List.Count}");
+            Log.Info($"Игрок {ev.Player.Nickname} полностью подключен. Всего игроков: {Player.Dictionary.Count}");
             
             if (Round.IsLobby && !Round.IsStarted)
             {
-                CheckPlayersForRoundStart();
+                CheckPlayersForRoundState();
             }
         }
 
-        private void OnPlayerLeft(LeftEventArgs ev)
+        private void OnPlayerDestroying(DestroyingEventArgs ev)
         {
-            Log.Info($"Игрок {ev.Player.Nickname} вышел. Всего игроков: {Player.List.Count}");
+            Log.Info($"Игрок {ev.Player.Nickname} отключился. Всего игроков: {Player.Dictionary.Count}");
             
             if (Round.IsLobby && !Round.IsStarted)
             {
-                CheckPlayersForRoundStart();
+                CheckPlayersForRoundState();
             }
         }
 
-        private void CheckPlayersForRoundStart()
+        private void CheckPlayersForRoundState()
         {
             if (Round.IsStarted)
                 return;
 
-            int currentPlayers = Player.List.Count;
+            int currentPlayers = Player.Dictionary.Count;
             Log.Debug($"Проверка игроков: {currentPlayers}/{Config.MinPlayers}, isRoundDelayed: {isRoundDelayed}");
 
             if (currentPlayers < Config.MinPlayers)
