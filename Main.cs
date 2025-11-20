@@ -69,18 +69,19 @@ namespace NekitPlugin
             isRoundDelayed = false;
         }
 
-        private void OnEndingRound(EndingRoundEventArgs ev)
-        {
-            if (ev.IsRoundEnded && Player.Dictionary.Count < Config.MinPlayers)
-            {
-                ev.IsAllowed = false;
-                Log.Info($"Окончание раунда заблокировано: недостаточно игроков ({Player.Dictionary.Count}/{Config.MinPlayers})");
-            }
-        }
-
         private void OnPlayerVerified(VerifiedEventArgs ev)
         {
             Log.Info($"Игрок {ev.Player.Nickname} полностью подключен. Всего игроков: {Player.Dictionary.Count}");
+            
+            if (Round.IsLobby && !Round.IsStarted)
+            {
+                CheckPlayersForRoundState();
+            }
+        }
+
+        private void OnPlayerDestroying(DestroyingEventArgs ev)
+        {
+            Log.Info($"Игрок {ev.Player.Nickname} отключился. Всего игроков: {Player.Dictionary.Count}");
             
             if (Round.IsLobby && !Round.IsStarted)
             {
