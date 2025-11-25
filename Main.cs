@@ -1,35 +1,26 @@
 namespace NekitPlugin
 {
-    using Exiled.API;
-    using Exiled.API.Enums;
     using Exiled.Events.EventArgs.Player;
     using Exiled.Events.EventArgs.Server;
-    using System.Collections.Generic;
     using Exiled.API.Features;
-    using MEC;
-
+    
     public class NekitPlugin : Plugin<Config>
     {
-        private static readonly NekitPlugin Singleton = new();
+        public static NekitPlugin Instance { get; } = new();
         private NekitPlugin() { }
-        public static NekitPlugin Instance => Singleton;
-        public override PluginPriority Priority { get; } = PluginPriority.Last;
-
-        private bool isRoundDelayed = false;
-        private int lastPlayerCount = 0;
+        
+        private bool isRoundDelayed;
 
         public override void OnEnabled() 
         {
             RegisterEvents();
-            Log.Info($"Плагин NekitPlugin включен");
-            base.OnEnabled();       
+            Log.Info("NekitPlugin включен");
         }
 
         public override void OnDisabled() 
         {
             UnRegisterEvents();
-            base.OnDisabled();
-            Log.Info($"Плагин NekitPlugin выключен");
+            Log.Info("NekitPlugin выключен");
         }
 
         private void RegisterEvents()
@@ -38,9 +29,6 @@ namespace NekitPlugin
             Exiled.Events.Handlers.Server.RoundStarted += OnRoundStarted;
             Exiled.Events.Handlers.Player.Verified += OnPlayerVerified;
             Exiled.Events.Handlers.Player.Destroying += OnPlayerDestroying;
-            Exiled.Events.Handlers.Player.Left += OnPlayerLeft;
-            
-            Log.Debug("Все события зарегистрированы");
         }
 
         private void UnRegisterEvents()
@@ -49,98 +37,41 @@ namespace NekitPlugin
             Exiled.Events.Handlers.Server.RoundStarted -= OnRoundStarted;
             Exiled.Events.Handlers.Player.Verified -= OnPlayerVerified;
             Exiled.Events.Handlers.Player.Destroying -= OnPlayerDestroying;
-            Exiled.Events.Handlers.Player.Left -= OnPlayerLeft;
-            
-            Log.Debug("Все события отписаны");
         }
 
-        private void OnWaitingForPlayers()
+        private void OnWaitingForPlayers() => ResetRoundState();
+        private void OnRoundStarted() => isRoundDelayed = false;
+
+        private void OnPlayerVerified(VerifiedEventArgs ev) => CheckPlayers();
+        private void OnPlayerDestroying(DestroyingEventArgs ev) => CheckPlayers();
+
+        private void ResetRoundState()
         {
             isRoundDelayed = false;
-            lastPlayerCount = 0;
-            Log.Info("Сервер ожидает игроков, сброс состояния раунда");
+            Round.IsLobbyLocked = false;
         }
 
-        private void OnRoundStarted()
+        private void CheckPlayers()
         {
-            Log.Info("Раунд начался!");
-            isRoundDelayed = false;
-        }
-
-        private void OnPlayerVerified(VerifiedEventArgs ev)
-        {
-            int currentPlayers = Player.Dictionary.Count;
-            Log.Info($"Игрок {ev.Player.Nickname} полностью подключен. Всего игроков: {currentPlayers}");
-            
-            // Проверяем только если количество изменилось и мы в лобби
-            if (currentPlayers != lastPlayerCount && Round.IsLobby && !Round.IsStarted)
-            {
-                lastPlayerCount = currentPlayers;
-                CheckPlayersForRoundState();
-            }
-        }
-
-        private void OnPlayerDestroying(DestroyingEventArgs ev)
-        {
-            int currentPlayers = Player.Dictionary.Count - 1;
-            Log.Info($"Игрок {ev.Player.Nickname} отключился. Всего игроков: {currentPlayers}");
-            
-            if (Round.IsLobby && !Round.IsStarted)
-            {
-                lastPlayerCount = currentPlayers;
-                CheckPlayersForRoundState();
-            }
-        }
-
-        private void OnPlayerLeft(LeftEventArgs ev)
-        {
-            int currentPlayers = Player.Dictionary.Count;
-            Log.Info($"Игрок {ev.Player.Nickname} вышел. Всего игроков: {currentPlayers}");
-            
-            if (Round.IsLobby && !Round.IsStarted)
-            {
-                lastPlayerCount = currentPlayers;
-                CheckPlayersForRoundState();
-            }
-        }
-
-        private void CheckPlayersForRoundState()
-        {
-            if (Round.IsStarted)
-                return;
+            if (Round.IsStarted) return;
 
             int currentPlayers = Player.Dictionary.Count;
-            Log.Debug($"Проверка игроков: {currentPlayers}/{Config.MinPlayers}, isRoundDelayed: {isRoundDelayed}");
-
+            
             if (currentPlayers < Config.MinPlayers)
             {
                 if (!isRoundDelayed)
                 {
-                    Log.Warn($"Недостаточно игроков для начала раунда. Требуется: {Config.MinPlayers}. Сейчас: {currentPlayers}.");
                     isRoundDelayed = true;
+                    Log.Warn($"Недостаточно игроков: {currentPlayers}/{Config.MinPlayers}");
                 }
-                
                 Round.IsLobbyLocked = true;
-                
-                if (Round.InProgress)
-                {
-                    Round.Restart();
-                    Log.Info("Отсчет раунда прерван из-за недостатка игроков");
-                }
-                
-                Log.Debug("Лобби заблокировано - недостаточно игроков");
+                Round.Restart();
             }
-            else if (currentPlayers >= Config.MinPlayers)
+            else if (isRoundDelayed)
             {
+                isRoundDelayed = false;
                 Round.IsLobbyLocked = false;
-                
-                if (isRoundDelayed)
-                {
-                    Log.Info($"Достигнут минимум игроков ({Config.MinPlayers}). Запуск раунда.");
-                    isRoundDelayed = false;
-                }
-                
-                Log.Debug($"Достаточно игроков для начала раунда: {currentPlayers}/{Config.MinPlayers}");
+                Log.Info($"Достигнут минимум игроков: {Config.MinPlayers}");
             }
         }
     }
