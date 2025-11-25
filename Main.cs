@@ -40,6 +40,7 @@ namespace NekitPlugin
             Exiled.Events.Handlers.Server.RoundStarted += OnRoundStarted;
             Exiled.Events.Handlers.Player.Verified += OnPlayerVerified;
             Exiled.Events.Handlers.Player.Destroying += OnPlayerDestroying;
+            Exiled.Events.Handlers.Player.Left += OnPlayerLeft;
             
             Log.Debug("Все события зарегистрированы");
         }
@@ -50,6 +51,7 @@ namespace NekitPlugin
             Exiled.Events.Handlers.Server.RoundStarted -= OnRoundStarted;
             Exiled.Events.Handlers.Player.Verified -= OnPlayerVerified;
             Exiled.Events.Handlers.Player.Destroying -= OnPlayerDestroying;
+            Exiled.Events.Handlers.Player.Left -= OnPlayerLeft;
             
             Log.Debug("Все события отписаны");
         }
