@@ -116,6 +116,11 @@ namespace NekitPlugin
                 
                 Round.IsLobbyLocked = true;
                 Log.Debug("Лобби заблокировано - недостаточно игроков");
+                if (Round.InProgress)
+                {
+                    Round.Restart();
+                    Log.Info("Отсчет раунда прерван из-за недостатка игроков");
+                }
             }
             else if (currentPlayers >= Config.MinPlayers)
             {
