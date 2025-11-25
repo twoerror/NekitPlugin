@@ -11,14 +11,12 @@ namespace NekitPlugin
     public class NekitPlugin : Plugin<Config>
     {
         private static readonly NekitPlugin Singleton = new();
-
         private NekitPlugin() { }
-
         public static NekitPlugin Instance => Singleton;
-
         public override PluginPriority Priority { get; } = PluginPriority.Last;
 
         private bool isRoundDelayed = false;
+        private int lastPlayerCount = 0;
 
         public override void OnEnabled() 
         {
@@ -59,8 +57,8 @@ namespace NekitPlugin
         private void OnWaitingForPlayers()
         {
             isRoundDelayed = false;
+            lastPlayerCount = 0;
             Log.Info("Сервер ожидает игроков, сброс состояния раунда");
-            CheckPlayersForRoundState();
         }
 
         private void OnRoundStarted()
@@ -71,29 +69,37 @@ namespace NekitPlugin
 
         private void OnPlayerVerified(VerifiedEventArgs ev)
         {
-            Log.Info($"Игрок {ev.Player.Nickname} полностью подключен. Всего игроков: {Player.Dictionary.Count}");
+            int currentPlayers = Player.Dictionary.Count;
+            Log.Info($"Игрок {ev.Player.Nickname} полностью подключен. Всего игроков: {currentPlayers}");
             
-            if (Round.IsLobby && !Round.IsStarted)
+            // Проверяем только если количество изменилось и мы в лобби
+            if (currentPlayers != lastPlayerCount && Round.IsLobby && !Round.IsStarted)
             {
+                lastPlayerCount = currentPlayers;
                 CheckPlayersForRoundState();
             }
         }
 
         private void OnPlayerDestroying(DestroyingEventArgs ev)
         {
-            Log.Info($"Игрок {ev.Player.Nickname} отключился. Всего игроков: {Player.Dictionary.Count}");
+            int currentPlayers = Player.Dictionary.Count - 1;
+            Log.Info($"Игрок {ev.Player.Nickname} отключился. Всего игроков: {currentPlayers}");
             
             if (Round.IsLobby && !Round.IsStarted)
             {
+                lastPlayerCount = currentPlayers;
                 CheckPlayersForRoundState();
             }
         }
 
         private void OnPlayerLeft(LeftEventArgs ev)
         {
-            Log.Info($"Игрок {ev.Player.Nickname} вышел. Всего игроков: {Player.Dictionary.Count}");
+            int currentPlayers = Player.Dictionary.Count;
+            Log.Info($"Игрок {ev.Player.Nickname} вышел. Всего игроков: {currentPlayers}");
+            
             if (Round.IsLobby && !Round.IsStarted)
             {
+                lastPlayerCount = currentPlayers;
                 CheckPlayersForRoundState();
             }
         }
@@ -115,21 +121,26 @@ namespace NekitPlugin
                 }
                 
                 Round.IsLobbyLocked = true;
-                Log.Debug("Лобби заблокировано - недостаточно игроков");
+                
                 if (Round.InProgress)
                 {
                     Round.Restart();
                     Log.Info("Отсчет раунда прерван из-за недостатка игроков");
                 }
+                
+                Log.Debug("Лобби заблокировано - недостаточно игроков");
             }
             else if (currentPlayers >= Config.MinPlayers)
             {
                 Round.IsLobbyLocked = false;
-                Log.Info($"Достигнут минимум игроков ({Config.MinPlayers}). Запуск раунда.");
+                
                 if (isRoundDelayed)
-                {     
+                {
+                    Log.Info($"Достигнут минимум игроков ({Config.MinPlayers}). Запуск раунда.");
                     isRoundDelayed = false;
                 }
+                
+                Log.Debug($"Достаточно игроков для начала раунда: {currentPlayers}/{Config.MinPlayers}");
             }
         }
     }
