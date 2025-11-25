@@ -87,6 +87,15 @@ namespace NekitPlugin
             }
         }
 
+        private void OnPlayerLeft(LeftEventArgs ev)
+        {
+            Log.Info($"Игрок {ev.Player.Nickname} вышел. Всего игроков: {Player.Dictionary.Count}");
+            if (Round.IsLobby && !Round.IsStarted)
+            {
+                CheckPlayersForRoundState();
+            }
+        }
+
         private void CheckPlayersForRoundState()
         {
             if (Round.IsStarted)

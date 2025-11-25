@@ -15,7 +15,5 @@ namespace NekitPlugin
         [Description("Минимальное количество игроков для начала раунда")]
         public int MinPlayers { get; set; } = 4;
         
-        [Description("Сообщение в лобби при недостатке игроков")]
-        public string WaitingMessage { get; set; } = "Ожидание игроков...";
 	}
 }
