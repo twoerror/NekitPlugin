@@ -1,77 +1,168 @@
 namespace NekitPlugin
 {
+    using Exiled.API.Enums;
+    using Exiled.API.Features;
     using Exiled.Events.EventArgs.Player;
     using Exiled.Events.EventArgs.Server;
-    using Exiled.API.Features;
-    
+    using System.Collections.Generic;
+    using MEC;
+
     public class NekitPlugin : Plugin<Config>
     {
-        public static NekitPlugin Instance { get; } = new();
+        private static readonly NekitPlugin Singleton = new();
         private NekitPlugin() { }
-        
-        private bool isRoundDelayed;
+        public static NekitPlugin Instance => Singleton;
 
-        public override void OnEnabled() 
+        public override PluginPriority Priority { get; } = PluginPriority.Last;
+        
+        private CoroutineHandle _checkCoroutine;
+        private bool _isChecking = false;
+
+        public override void OnEnabled()
         {
             RegisterEvents();
-            Log.Info("NekitPlugin включен");
+            Log.Info("Плагин NekitPlugin включен");
+            base.OnEnabled();
         }
 
-        public override void OnDisabled() 
+        public override void OnDisabled()
         {
             UnRegisterEvents();
-            Log.Info("NekitPlugin выключен");
+            StopChecking();
+            base.OnDisabled();
+            Log.Info("Плагин NekitPlugin выключен");
         }
 
         private void RegisterEvents()
         {
             Exiled.Events.Handlers.Server.WaitingForPlayers += OnWaitingForPlayers;
             Exiled.Events.Handlers.Server.RoundStarted += OnRoundStarted;
+            Exiled.Events.Handlers.Server.RoundEnded += OnRoundEnded;
             Exiled.Events.Handlers.Player.Verified += OnPlayerVerified;
             Exiled.Events.Handlers.Player.Destroying += OnPlayerDestroying;
+            Exiled.Events.Handlers.Player.Left += OnPlayerLeft;
+            
+            Log.Debug("Все события зарегистрированы");
         }
 
         private void UnRegisterEvents()
         {
             Exiled.Events.Handlers.Server.WaitingForPlayers -= OnWaitingForPlayers;
             Exiled.Events.Handlers.Server.RoundStarted -= OnRoundStarted;
+            Exiled.Events.Handlers.Server.RoundEnded -= OnRoundEnded;
             Exiled.Events.Handlers.Player.Verified -= OnPlayerVerified;
             Exiled.Events.Handlers.Player.Destroying -= OnPlayerDestroying;
+            Exiled.Events.Handlers.Player.Left -= OnPlayerLeft;
+            
+            Log.Debug("Все события отписаны");
         }
 
-        private void OnWaitingForPlayers() => ResetRoundState();
-        private void OnRoundStarted() => isRoundDelayed = false;
-
-        private void OnPlayerVerified(VerifiedEventArgs ev) => CheckPlayers();
-        private void OnPlayerDestroying(DestroyingEventArgs ev) => CheckPlayers();
-
-        private void ResetRoundState()
+        private void OnWaitingForPlayers()
         {
-            isRoundDelayed = false;
-            Round.IsLobbyLocked = false;
+            Log.Info("Сервер ожидает игроков, запуск проверки");
+            StartChecking();
         }
 
-        private void CheckPlayers()
+        private void OnRoundStarted()
         {
-            if (Round.IsStarted) return;
+            Log.Info("Раунд начался! Остановка проверки");
+            StopChecking();
+        }
 
+        private void OnRoundEnded(RoundEndedEventArgs ev)
+        {
+            Log.Info("Раунд завершен! Остановка проверки");
+            StopChecking();
+        }
+
+        private void OnPlayerVerified(VerifiedEventArgs ev)
+        {
+            Log.Debug($"Игрок {ev.Player.Nickname} полностью подключен. Всего игроков: {Player.Dictionary.Count}");
+            
+            if (ShouldCheckPlayers())
+                CheckPlayersImmediately();
+        }
+
+        private void OnPlayerDestroying(DestroyingEventArgs ev)
+        {
+            Log.Debug($"Игрок {ev.Player.Nickname} отключился. Всего игроков: {Player.Dictionary.Count}");
+            
+            if (ShouldCheckPlayers())
+                CheckPlayersImmediately();
+        }
+
+        private void OnPlayerLeft(LeftEventArgs ev)
+        {
+            Log.Debug($"Игрок {ev.Player.Nickname} вышел. Всего игроков: {Player.Dictionary.Count}");
+            
+            if (ShouldCheckPlayers())
+                CheckPlayersImmediately();
+        }
+
+        private void StartChecking()
+        {
+            if (_isChecking) return;
+            
+            _isChecking = true;
+            _checkCoroutine = Timing.RunCoroutine(CheckPlayersRoutine());
+            Log.Debug("Запущена корутина проверки игроков");
+        }
+
+        private void StopChecking()
+        {
+            if (!_isChecking) return;
+            
+            _isChecking = false;
+            Timing.KillCoroutines(_checkCoroutine);
+            Log.Debug("Остановлена корутина проверки игроков");
+        }
+
+        private IEnumerator<float> CheckPlayersRoutine()
+        {
+            while (_isChecking)
+            {
+                if (ShouldCheckPlayers())
+                {
+                    CheckPlayersState();
+                }
+                yield return Timing.WaitForSeconds(Config.CheckInterval);
+            }
+        }
+
+        private void CheckPlayersImmediately()
+        {
+            if (ShouldCheckPlayers())
+            {
+                CheckPlayersState();
+            }
+        }
+
+        private bool ShouldCheckPlayers()
+        {
+            return !Round.IsStarted && Round.IsLobby;
+        }
+
+        private void CheckPlayersState()
+        {
             int currentPlayers = Player.Dictionary.Count;
             
+            Log.Debug($"Проверка игроков: {currentPlayers}/{Config.MinPlayers}");
+
             if (currentPlayers < Config.MinPlayers)
             {
-                if (!isRoundDelayed)
+                if (!Round.IsLobbyLocked)
                 {
-                    isRoundDelayed = true;
-                    Log.Warn($"Недостаточно игроков: {currentPlayers}/{Config.MinPlayers}");
+                    Round.IsLobbyLocked = true;
+                    Log.Warn($"Недостаточно игроков. Требуется: {Config.MinPlayers}. Сейчас: {currentPlayers}. Лобби заблокировано.");
                 }
-                Round.IsLobbyLocked = true;
-                Round.Restart();
             }
-            else if (isRoundDelayed)
+            else
             {
-                isRoundDelayed = false;
-                Round.IsLobbyLocked = false;
-                Log.Info($"Достигнут минимум игроков: {Config.MinPlayers}");
+                if (Round.IsLobbyLocked)
+                {
+                    Round.IsLobbyLocked = false;
+                    Log.Info($"Достигнут минимум игроков ({Config.MinPlayers}). Лобби разблокировано.");
+                }
             }
         }
     }
